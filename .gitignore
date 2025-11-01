@@ -40,7 +40,14 @@
 # debug information files
 *.dwo
 
-homework/
+# xmake
+.xmake/
+
+# vscode
 .vscode/
+
+# others
+homework/
 docs/
 examples/
+temp/
