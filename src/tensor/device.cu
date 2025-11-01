@@ -4,7 +4,7 @@
 #include <cstring>
 #include <stdexcept>
 
-namespace framework {
+namespace TF {
 
 #define CUDA_CHECK(call) \
     do { \
@@ -46,11 +46,14 @@ void copy_memory(void* dst, const void* src, size_t size,
     if (size == 0) return;
     
     if (src_device.is_cpu() && dst_device.is_cpu()) {
+        // CPU to CPU
         std::memcpy(dst, src, size);
     } else if (src_device.is_cpu() && dst_device.is_cuda()) {
+        // CPU to CUDA
         CUDA_CHECK(cudaSetDevice(dst_device.index()));
         CUDA_CHECK(cudaMemcpy(dst, src, size, cudaMemcpyHostToDevice));
     } else if (src_device.is_cuda() && dst_device.is_cpu()) {
+        // CUDA to CPU
         CUDA_CHECK(cudaSetDevice(src_device.index()));
         CUDA_CHECK(cudaMemcpy(dst, src, size, cudaMemcpyDeviceToHost));
     } else {
@@ -64,4 +67,4 @@ void copy_memory(void* dst, const void* src, size_t size,
     }
 }
 
-} // namespace framework
+} // namespace TF

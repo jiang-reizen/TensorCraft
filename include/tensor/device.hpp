@@ -2,14 +2,19 @@
 #include <string>
 #include <stdexcept>
 
-namespace framework {
+// Tensor Framewrok
+namespace TF {
 
+// Device Type 分为 CPU 和 CUDA，其中 CUDA 还有编号
 enum class DeviceType {
     CPU,
     CUDA
 };
 
 class Device {
+private:
+    DeviceType type_;
+    int index_;
 public:
     Device(DeviceType type = DeviceType::CPU, int index = 0)
         : type_(type), index_(index) {
@@ -39,15 +44,17 @@ public:
         return !(*this == other);
     }
 
-private:
-    DeviceType type_;
-    int index_;
+
 };
 
-// 工具函数
+// 工具函数，根据 Device 类型分配空间。
+// size 为字节数。
 void* allocate_memory(size_t size, const Device& device);
+// 工具函数，根据 Device 类型释放空间
 void free_memory(void* ptr, const Device& device);
+// 工具函数，根据 Device 类型拷贝数据。
+// size 为字节数。
 void copy_memory(void* dst, const void* src, size_t size, 
                  const Device& dst_device, const Device& src_device);
 
-} // namespace framework
+} // namespace TF

@@ -1,12 +1,12 @@
 #include "tensor/storage.hpp"
 #include <stdexcept>
 
-namespace framework {
+namespace TF {
 
 Storage::Storage(size_t size, DType dtype, const Device& device)
     : size_(size), dtype_(dtype), device_(device) {
     if (size > 0) {
-        data_ = allocate_memory(size * dtype_size(dtype), device);
+        data_ = allocate_memory(nbytes(), device);
     } else {
         data_ = nullptr;
     }
@@ -18,4 +18,4 @@ Storage::~Storage() {
     }
 }
 
-} // namespace framework
+} // namespace TF
