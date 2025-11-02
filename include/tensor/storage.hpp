@@ -1,11 +1,11 @@
 #pragma once
-#include "device.hpp"
-#include "dtype.hpp"
+#include "tensor/device.hpp"
+#include "tensor/dtype.hpp"
 #include <memory>
 #include <atomic>
 
 // Tensor Framework
-namespace TF {
+namespace TensorFramework {
 
 // 引用计数的数据存储
 class Storage {
@@ -40,4 +40,4 @@ public:
 
 };
 
-} // namespace TF
+} // namespace TensorFramework

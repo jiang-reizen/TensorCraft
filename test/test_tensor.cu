@@ -3,7 +3,7 @@
 #include "tensor/tensor.hpp"
 #include <iostream>
 
-using namespace TF;
+using namespace TensorFramework;
 
 int main() {
     auto x = Tensor::arange(0, 120, 1, DType::Float32, Device(DeviceType::CPU));

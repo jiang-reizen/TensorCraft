@@ -7,7 +7,7 @@
 #include <random>
 #include <cuda_runtime.h>
 
-namespace TF {
+namespace TensorFramework {
 
 // ============ 构造函数 ============
 
@@ -341,9 +341,9 @@ std::string Tensor::str() const {
     return oss.str();
 }
 
-} // namespace TF
+} // namespace TensorFramework
 
-namespace TF {
+namespace TensorFramework {
 
 // 将线性索引转换为多维索引
 __device__ void linear_to_multi_index(
@@ -487,9 +487,9 @@ void copy_strided_to_contiguous_cuda(
 }
 
 
-} // namespace TF
+} // namespace TensorFramework
 
-namespace TF {
+namespace TensorFramework {
 
 __global__ void arange_kernel(float* dst, float start, float step, int64_t size) {
     int64_t idx = blockIdx.x * blockDim.x + threadIdx.x;
@@ -540,7 +540,7 @@ Tensor Tensor::arange(float start, float end, float step, DType dtype, const Dev
     return result;
 }
 
-} // namespace TF
+} // namespace TensorFramework
 
 // 继续 tensor.cu
 

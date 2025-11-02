@@ -4,7 +4,7 @@
 #include <stdexcept>
 
 // Tensor Framewrok
-namespace TF {
+namespace TensorFramework {
 
 enum class DType {
     Float32,
@@ -40,4 +40,4 @@ inline std::string dtype_name(DType dtype) {
     }
 }
 
-} // namespace TF
+} // namespace TensorFramework

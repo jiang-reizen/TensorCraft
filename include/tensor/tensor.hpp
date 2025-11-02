@@ -1,12 +1,12 @@
 #pragma once
-#include "storage.hpp"
+#include "tensor/storage.hpp"
 #include <vector>
 #include <initializer_list>
 #include <memory>
 #include <functional>
 
 // Tensor Framework
-namespace TF {
+namespace TensorFramework {
 
 class Tensor {
 private:
@@ -182,4 +182,4 @@ void copy_strided_to_contiguous_cuda(
     size_t element_size                 // 元素大小（字节）
 );
 
-} // namespace TF
+} // namespace TensorFramework

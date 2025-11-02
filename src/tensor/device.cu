@@ -4,7 +4,7 @@
 #include <cstring>
 #include <stdexcept>
 
-namespace TF {
+namespace TensorFramework {
 
 #define CUDA_CHECK(call) \
     do { \
@@ -67,4 +67,4 @@ void copy_memory(void* dst, const void* src, size_t size,
     }
 }
 
-} // namespace TF
+} // namespace TensorFramework

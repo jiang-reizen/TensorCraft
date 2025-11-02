@@ -1,7 +1,7 @@
 #include "tensor/storage.hpp"
 #include <stdexcept>
 
-namespace TF {
+namespace TensorFramework {
 
 Storage::Storage(size_t size, DType dtype, const Device& device)
     : size_(size), dtype_(dtype), device_(device) {
@@ -18,4 +18,4 @@ Storage::~Storage() {
     }
 }
 
-} // namespace TF
+} // namespace TensorFramework

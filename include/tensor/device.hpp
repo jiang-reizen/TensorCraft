@@ -3,7 +3,7 @@
 #include <stdexcept>
 
 // Tensor Framewrok
-namespace TF {
+namespace TensorFramework {
 
 // Device Type 分为 CPU 和 CUDA，其中 CUDA 还有编号
 enum class DeviceType {
@@ -57,4 +57,4 @@ void free_memory(void* ptr, const Device& device);
 void copy_memory(void* dst, const void* src, size_t size, 
                  const Device& dst_device, const Device& src_device);
 
-} // namespace TF
+} // namespace TensorFramework
