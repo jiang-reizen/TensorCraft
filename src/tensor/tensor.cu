@@ -93,17 +93,13 @@ Tensor Tensor::clone() const {
 
 Tensor Tensor::contiguous() const {
     if (is_contiguous()) {
-        return *this;  // 浅拷贝，共享storage
+        return *this;
     }
     
-    // 创建新的连续tensor并拷贝数据
     Tensor result(shape_, dtype(), device());
     
-    // 简化实现：使用CPU端逐元素拷贝
-    // 实际应该根据设备类型调用相应的kernel
-    
     if (device().is_cpu()) {
-        // CPU实现
+        // CPU实现（保持原有逻辑）
         std::function<void(int64_t, int64_t, int64_t)> copy_recursive;
         copy_recursive = [&](int64_t dim, int64_t src_offset, int64_t dst_offset) {
             if (dim == ndim()) {
@@ -122,13 +118,21 @@ Tensor Tensor::contiguous() const {
             }
         };
         
-        copy_recursive(0, 0, 0);
+        copy_recursive(0, offset_, 0);  // 注意这里传入offset_
     } else {
-        // CUDA实现：先拷贝到CPU，再拷贝回GPU
-        auto cpu_tensor = to(Device(DeviceType::CPU)).contiguous();
-        copy_memory(result.data_ptr(), cpu_tensor.data_ptr(),
-                   numel() * dtype_size(dtype()),
-                   device(), cpu_tensor.device());
+        // CUDA实现：调用GPU kernel，传入offset
+        copy_strided_to_contiguous_cuda(
+            result.data_ptr(),
+            storage_->data(),  // 使用storage的原始指针
+            shape_,
+            stride_,
+            offset_,           // 传入offset
+            ndim(),
+            numel(),
+            dtype_size(dtype())
+        );
+        cudaSetDevice(device().index());
+        cudaDeviceSynchronize();
     }
     
     return result;
@@ -138,12 +142,19 @@ Tensor Tensor::to(const Device& device) const {
     if (device == this->device()) {
         return *this;
     }
-    
+    if (this->device().is_cuda()) {
+        cudaSetDevice(this->device().index());
+        cudaDeviceSynchronize();
+    }
     auto cont = contiguous();
     Tensor result(shape_, dtype(), device);
     copy_memory(result.data_ptr(), cont.data_ptr(),
                numel() * dtype_size(dtype()),
                device, this->device());
+    if (device.is_cuda()) {
+        cudaSetDevice(device.index());
+        cudaDeviceSynchronize();
+    }
     
     return result;
 }
@@ -328,6 +339,205 @@ std::string Tensor::str() const {
     oss << ", contiguous=" << (is_contiguous() ? "True" : "False");
     oss << ")";
     return oss.str();
+}
+
+} // namespace TF
+
+namespace TF {
+
+// 将线性索引转换为多维索引
+__device__ void linear_to_multi_index(
+    int64_t linear_idx,
+    const int64_t* shape,
+    int64_t ndim,
+    int64_t* multi_idx
+) {
+    for (int64_t i = ndim - 1; i >= 0; --i) {
+        multi_idx[i] = linear_idx % shape[i];
+        linear_idx /= shape[i];
+    }
+}
+
+// 根据多维索引和stride计算在strided tensor中的偏移
+__device__ int64_t multi_index_to_offset(
+    const int64_t* multi_idx,
+    const int64_t* stride,
+    int64_t ndim,
+    int64_t base_offset  // 基础偏移
+) {
+    int64_t offset = base_offset;
+    for (int64_t i = 0; i < ndim; ++i) {
+        offset += multi_idx[i] * stride[i];
+    }
+    return offset;
+}
+
+// 通用的 strided copy kernel（模板版本，支持不同数据类型）
+template<typename T>
+__global__ void strided_copy_kernel(
+    T* dst,                    // 连续输出
+    const T* src,              // strided输入
+    const int64_t* shape,      // 形状
+    const int64_t* stride,     // 步长
+    int64_t base_offset,       // 基础偏移
+    int64_t ndim,              // 维度数
+    int64_t numel              // 总元素数
+) {
+    // 全局线程索引
+    int64_t idx = blockIdx.x * blockDim.x + threadIdx.x;
+    
+    if (idx >= numel) return;
+    
+    // 为每个线程分配栈上的多维索引数组
+    // 注意：CUDA不支持动态栈数组，这里假设最大维度为8
+    int64_t multi_idx[8];  // 假设最大8维
+    
+    // if (ndim > 8) {
+    //     // 对于超过8维的情况，需要使用其他方法
+    //     return;
+    // }
+    
+    // 将线性索引转换为多维索引
+    linear_to_multi_index(idx, shape, ndim, multi_idx);
+    
+    // 计算在strided tensor中的偏移（包含base_offset）
+    int64_t src_offset = multi_index_to_offset(multi_idx, stride, ndim, base_offset);
+    
+    // 拷贝数据
+    dst[idx] = src[src_offset];
+}
+
+void copy_strided_to_contiguous_cuda(
+    void* dst,
+    const void* src,
+    const std::vector<int64_t>& shape,
+    const std::vector<int64_t>& stride,
+    int64_t offset,
+    int64_t ndim,
+    int64_t numel,
+    size_t element_size
+) {
+    if (numel == 0) return;
+    
+    // 配置kernel启动参数
+    const int block_size = 256;
+    int grid_size = (numel + block_size - 1) / block_size;
+    
+    // 根据维度和元素大小选择合适的kernel
+    // 优化：针对常见维度使用特化版本
+
+    // 通用版本：将shape和stride拷贝到GPU
+    int64_t* d_shape = nullptr;
+    int64_t* d_stride = nullptr;
+    
+    cudaMalloc(&d_shape, ndim * sizeof(int64_t));
+    cudaMalloc(&d_stride, ndim * sizeof(int64_t));
+    
+    cudaMemcpy(d_shape, shape.data(), ndim * sizeof(int64_t), cudaMemcpyHostToDevice);
+    cudaMemcpy(d_stride, stride.data(), ndim * sizeof(int64_t), cudaMemcpyHostToDevice);
+    
+    // 根据元素大小选择kernel
+    switch (element_size) {
+        case 1:  // int8, uint8
+            strided_copy_kernel<uint8_t><<<grid_size, block_size>>>(
+                static_cast<uint8_t*>(dst),
+                static_cast<const uint8_t*>(src),
+                d_shape, d_stride, offset, ndim, numel
+            );
+            break;
+        case 2:  // float16, int16
+            strided_copy_kernel<uint16_t><<<grid_size, block_size>>>(
+                static_cast<uint16_t*>(dst),
+                static_cast<const uint16_t*>(src),
+                d_shape, d_stride, offset, ndim, numel
+            );
+            break;
+        case 4:  // float32, int32
+            strided_copy_kernel<uint32_t><<<grid_size, block_size>>>(
+                static_cast<uint32_t*>(dst),
+                static_cast<const uint32_t*>(src),
+                d_shape, d_stride, offset, ndim, numel
+            );
+            break;
+        case 8:  // float64, int64
+            strided_copy_kernel<uint64_t><<<grid_size, block_size>>>(
+                static_cast<uint64_t*>(dst),
+                static_cast<const uint64_t*>(src),
+                d_shape, d_stride, offset, ndim, numel
+            );
+            break;
+        default:
+            cudaFree(d_shape);
+            cudaFree(d_stride);
+            throw std::runtime_error("Unsupported element size");
+    }
+    
+    // 清理
+    cudaFree(d_shape);
+    cudaFree(d_stride);
+    
+    // 检查kernel执行错误
+    cudaError_t err = cudaGetLastError();
+    if (err != cudaSuccess) {
+        throw std::runtime_error(std::string("CUDA kernel error: ") + cudaGetErrorString(err));
+    }
+    
+    // 同步（可选，根据需要决定是否异步）
+    cudaDeviceSynchronize();
+}
+
+
+} // namespace TF
+
+namespace TF {
+
+__global__ void arange_kernel(float* dst, float start, float step, int64_t size) {
+    int64_t idx = blockIdx.x * blockDim.x + threadIdx.x;
+    if (idx < size) {
+        dst[idx] = start + step * idx;
+    }
+}
+
+Tensor Tensor::arange(float start, float end, float step, DType dtype, const Device& device) {
+    // 仅实现了 dtype == Float32 的逻辑
+    int64_t size = static_cast<int64_t>(std::ceil((end - start) / step));
+    Tensor result({size}, dtype, device);
+    
+    if (device.is_cpu()) {
+        float* data = static_cast<float*>(result.data_ptr());
+        for (int64_t i = 0; i < size; ++i) {
+            data[i] = start + i * step;
+        }
+    } else {
+        cudaSetDevice(device.index());
+        
+        const int block_size = 256;
+        int grid_size = (size + block_size - 1) / block_size;
+        float* data = static_cast<float*>(result.data_ptr());
+        
+        // 启动 kernel
+        arange_kernel<<<grid_size, block_size>>>(data, start, step, size);
+        
+        // ✅ 检查 kernel 启动错误
+        cudaError_t launch_err = cudaGetLastError();
+        if (launch_err != cudaSuccess) {
+            throw std::runtime_error(
+                std::string("arange_kernel launch failed: ") + 
+                cudaGetErrorString(launch_err)
+            );
+        }
+        
+        // ✅ 同步等待 kernel 完成
+        cudaError_t sync_err = cudaDeviceSynchronize();
+        if (sync_err != cudaSuccess) {
+            throw std::runtime_error(
+                std::string("arange_kernel sync failed: ") + 
+                cudaGetErrorString(sync_err)
+            );
+        }
+    }
+    
+    return result;
 }
 
 } // namespace TF

@@ -82,6 +82,17 @@ public:
     // 索引操作，读入第一维
     Tensor operator[](int64_t index) const;
 
+// ============ 工厂方法 ============
+
+    static Tensor arange(float start, float end, float step = 1.0f, DType dtype = DType::Float32,
+                        const Device& device = Device(DeviceType::CPU));
+    // static Tensor zeros(const std::vector<int64_t>& shape, DType dtype = DType::Float32,
+    //                    const Device& device = Device(DeviceType::CPU));
+    // static Tensor ones(const std::vector<int64_t>& shape, DType dtype = DType::Float32,
+    //                   const Device& device = Device(DeviceType::CPU));
+    // static Tensor randn(const std::vector<int64_t>& shape, DType dtype = DType::Float32,
+    //                    const Device& device = Device(DeviceType::CPU));
+
     // // 数据填充
     // void fill_(float value);
     // void zero_();
@@ -159,5 +170,16 @@ public:
     // Tensor unsqueeze(int64_t dim) const;
 
 };
+
+void copy_strided_to_contiguous_cuda(
+    void* dst,                          // 目标地址（连续）
+    const void* src,                    // 源地址（可能非连续）
+    const std::vector<int64_t>& shape,  // 形状
+    const std::vector<int64_t>& stride, // 步长
+    int64_t offset,                     // 偏移量
+    int64_t ndim,                       // 维度数
+    int64_t numel,                      // 元素总数
+    size_t element_size                 // 元素大小（字节）
+);
 
 } // namespace TF
